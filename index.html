@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SR Piano</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>SR Piano</h1>
+
+      <div class="controls">
+        <div class="instrument-buttons">
+          <button class="inst-btn active" data-inst="piano" type="button">🎹 Piano</button>
+          <button class="inst-btn" data-inst="harmonium" type="button">🪗 Harmonium</button>
+          <button class="inst-btn" data-inst="organ" type="button">🎼 Organ</button>
+          <button class="inst-btn" data-inst="flute" type="button">🎶 Flute</button>
+          <button class="inst-btn" data-inst="strings" type="button">🎻 Strings</button>
+          <button class="inst-btn" data-inst="guitar" type="button">🎸 Guitar</button>
+          <button class="inst-btn" data-inst="synth" type="button">🎛 Synth</button>
+          <button class="inst-btn" data-inst="pad" type="button">🌌 Pad</button>
+        </div>
+
+        <label>
+          Octave
+          <div class="stepper">
+            <button id="octDown" type="button">-</button>
+            <span id="octaveValue">4</span>
+            <button id="octUp" type="button">+</button>
+          </div>
+        </label>
+
+        <label>
+          Transpose
+          <div class="stepper">
+            <button id="transDown" type="button">-</button>
+            <span id="transposeValue">0</span>
+            <button id="transUp" type="button">+</button>
+          </div>
+        </label>
+
+        <label>
+          Volume
+          <input id="volume" type="range" min="-18" max="12" step="1" value="6" />
+        </label>
+
+        <label>
+          Reverb
+          <input id="reverb" type="range" min="0" max="0.7" step="0.01" value="0.10" />
+        </label>
+
+        <label class="sustain-wrap">
+          Sustain
+          <input id="sustain" type="checkbox" />
+        </label>
+
+        <button id="startAudio" type="button">Start Audio</button>
+        <button id="panic" type="button">Stop All</button>
+      </div>
+    </header>
+
+    <section class="piano-wrap">
+      <div id="piano" class="piano"></div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

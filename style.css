@@ -1,0 +1,28 @@
+*{box-sizing:border-box}
+body{margin:0;background:#20242b;color:#fff;font-family:Arial,Helvetica,sans-serif}
+.app{min-height:100vh;padding:18px}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:18px}
+h1{margin:0;font-size:34px;letter-spacing:.5px;color:#f8fafc;white-space:nowrap}
+.controls{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;align-items:end}
+.instrument-buttons{display:flex;flex-wrap:wrap;gap:8px;width:100%;justify-content:flex-end}
+.inst-btn{background:#1f2937;color:#fff;border:1px solid #374151;padding:10px 14px;border-radius:9px;cursor:pointer;font-weight:700;transition:.2s}
+.inst-btn:hover{background:#374151}
+.inst-btn.active{background:#06b6d4;color:#fff;border-color:#67e8f9}
+label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#dbeafe}
+button,input[type=range]{height:36px}
+button{border:0;border-radius:8px;padding:0 12px;background:#f8fafc;color:#111827;font-weight:700;cursor:pointer}
+button:hover{filter:brightness(.93)}
+.stepper{display:flex;gap:6px;align-items:center}
+.stepper span{min-width:38px;height:36px;display:grid;place-items:center;background:#0f172a;border:1px solid #334155;border-radius:8px;font-weight:700}
+.sustain-wrap{align-items:center;gap:8px;flex-direction:row;padding-bottom:7px}
+.sustain-wrap input{width:20px;height:20px}
+.piano-wrap{overflow-x:auto;border-radius:10px}
+.piano{position:relative;width:max-content;min-width:100%;height:500px;background:#141414;border-top:12px solid #006b6b;padding-left:16px;user-select:none}
+.white{position:relative;display:inline-block;width:72px;height:470px;background:linear-gradient(90deg,#eee,#fff 20%,#fff 80%,#ddd);border:1px solid #111;border-bottom:7px solid #aaa;vertical-align:top;cursor:pointer}
+.white.active{background:linear-gradient(#dff3ff,#8fd3ff)}
+.white .key-name{position:absolute;bottom:115px;left:50%;transform:translateX(-50%);color:#111;font-size:27px;font-family:Georgia,serif}
+.white .note-name{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);color:blue;font-size:30px;font-weight:900}
+.black{position:absolute;top:0;width:42px;height:255px;background:linear-gradient(90deg,#050505,#262626 45%,#050505);color:#fff;z-index:5;border:1px solid #333;border-bottom:7px solid #111;border-radius:0 0 6px 6px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:24px;font-family:Georgia,serif}
+.black .sharp{font-size:14px;color:#e5e7eb;margin-top:12px}
+.black.active{background:linear-gradient(#3b82f6,#0f172a)}
+@media(max-width:900px){.topbar{display:block}.controls{justify-content:flex-start;margin-top:16px}.instrument-buttons{justify-content:flex-start}.white{width:58px}.black{width:34px}}
