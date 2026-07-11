@@ -30,7 +30,8 @@ const startAudioBtn = document.getElementById("startAudio");
 
 const reverb = new Tone.Reverb({ decay: 2.4, wet: 0.10 }).toDestination();
 const limiter = new Tone.Limiter(-0.8).connect(reverb);
-const compressor = new Tone.Compressor({ threshold: -22, ratio: 2.2, attack: 0.005, release: 0.12 }).connect(limiter);
+const echo = new Tone.FeedbackDelay({ delayTime: 0.25, feedback: 0.35, wet: 0 }).connect(limiter);
+const compressor = new Tone.Compressor({ threshold: -22, ratio: 2.2, attack: 0.005, release: 0.12 }).connect(echo);
 Tone.Destination.volume.value = 6;
 
 const GM_BASE = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/";
@@ -361,6 +362,10 @@ document.getElementById("volume").addEventListener("input", e => {
 
 document.getElementById("reverb").addEventListener("input", e => {
   reverb.wet.value = Number(e.target.value);
+});
+
+document.getElementById("echo").addEventListener("input", e => {
+  echo.wet.value = Number(e.target.value);
 });
 
 document.getElementById("sustain").addEventListener("change", e => {

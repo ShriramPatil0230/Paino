@@ -28,3 +28,8 @@ Internet is required because sampled instruments load from:
 Open index.html in Chrome/Edge/Firefox. Wait for "Start Audio" to become
 enabled (instruments are preloading), then click it or any instrument button
 to begin playing.
+
+Echo update:
+- Added an "Echo" slider next to Reverb, backed by a Tone.FeedbackDelay
+  (0.25s delay time, 0.35 feedback) mixed into the same effects chain.
+  Default is off (0); drag it up for a repeating echo effect.
