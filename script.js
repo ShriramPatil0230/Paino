@@ -19,12 +19,14 @@ let octave = 4;
 let transpose = 0;
 let sustain = false;
 let started = false;
+let instrumentsReady = false;
 let currentInstrumentName = "piano";
 let instrument = null;
 let activeKeys = new Map();
 let heldKeys = new Set();
 
 const piano = document.getElementById("piano");
+const startAudioBtn = document.getElementById("startAudio");
 
 const reverb = new Tone.Reverb({ decay: 2.4, wet: 0.10 }).toDestination();
 const limiter = new Tone.Limiter(-0.8).connect(reverb);
@@ -37,11 +39,7 @@ const NOTE_FILE_MAP = {
   "F#": "Gb", "G": "G", "G#": "Ab", "A": "A", "A#": "Bb", "B": "B"
 };
 
-const samplerCache = {};
-
 function makeFluidSampler(slug, volume = 3, release = 0.65) {
-  if (samplerCache[slug]) return samplerCache[slug];
-
   const urls = {};
   const octaves = [2, 3, 4, 5, 6];
   const notes = ["C", "D#", "F#", "A"];
@@ -54,14 +52,12 @@ function makeFluidSampler(slug, volume = 3, release = 0.65) {
 
   urls["C7"] = "C7.mp3";
 
-  samplerCache[slug] = new Tone.Sampler({
+  return new Tone.Sampler({
     urls,
     baseUrl: `${GM_BASE}${slug}-mp3/`,
     release,
     volume
   }).connect(compressor);
-
-  return samplerCache[slug];
 }
 
 const sampledInstruments = {
@@ -106,30 +102,53 @@ const synthPresets = {
   }
 };
 
-async function startAudio() {
-  await Tone.start();
-  started = true;
-  if (!instrument) instrument = sampledInstruments.piano();
-  document.getElementById("startAudio").style.display = "none";
+// --- Preloading: every instrument is built once up front so switching later is instant ---
+const instrumentCache = {};
+
+function buildAllInstruments() {
+  Object.keys(sampledInstruments).forEach(name => {
+    instrumentCache[name] = sampledInstruments[name]();
+  });
+  Object.keys(synthPresets).forEach(name => {
+    instrumentCache[name] = synthPresets[name]();
+  });
 }
 
-async function setInstrument(name) {
+function setControlsEnabled(enabled) {
+  document.querySelectorAll(".inst-btn").forEach(b => { b.disabled = !enabled; });
+  startAudioBtn.disabled = !enabled;
+}
+
+function initInstruments() {
+  setControlsEnabled(false);
+  startAudioBtn.textContent = "Loading…";
+
+  buildAllInstruments();
+  instrument = instrumentCache[currentInstrumentName];
+
+  Tone.loaded().then(() => {
+    instrumentsReady = true;
+    setControlsEnabled(true);
+    startAudioBtn.textContent = "Start Audio";
+  }).catch(err => {
+    console.error("Instrument loading failed:", err);
+    startAudioBtn.textContent = "Load failed - retry";
+    startAudioBtn.disabled = false;
+  });
+}
+
+async function startAudio() {
+  if (!instrumentsReady) return;
+  await Tone.start();
+  started = true;
+  startAudioBtn.style.display = "none";
+}
+
+function setInstrument(name) {
+  if (!instrumentCache[name]) return;
   stopAll();
   currentInstrumentName = name;
-
-  if (instrument && !samplerCache[currentInstrumentName]) {
-    try { instrument.dispose(); } catch {}
-  }
-
-  if (sampledInstruments[name]) {
-    instrument = sampledInstruments[name]();
-    return;
-  }
-
-  if (instrument) {
-    try { instrument.dispose(); } catch {}
-  }
-  instrument = synthPresets[name]();
+  instrument = instrumentCache[name];
 }
 
 function midiToNote(midi) {
@@ -152,7 +171,7 @@ function cssEscape(value) {
 
 function playKey(key) {
   key = normalizeKey(key);
-  if (!started || activeKeys.has(key)) return;
+  if (!started || !instrument || activeKeys.has(key)) return;
 
   const el = document.querySelector(`[data-key="${cssEscape(key)}"]`);
   if (!el) return;
@@ -178,7 +197,7 @@ function releaseKey(key) {
   const el = document.querySelector(`[data-key="${cssEscape(key)}"]`);
   if (el) el.classList.remove("active");
 
-  instrument.triggerRelease(note, Tone.now());
+  instrument?.triggerRelease(note, Tone.now());
 }
 
 function releaseSustainedKeys() {
@@ -187,7 +206,7 @@ function releaseSustainedKeys() {
       activeKeys.delete(key);
       const el = document.querySelector(`[data-key="${cssEscape(key)}"]`);
       if (el) el.classList.remove("active");
-      instrument.triggerRelease(note, Tone.now());
+      instrument?.triggerRelease(note, Tone.now());
     }
   });
 }
@@ -202,6 +221,12 @@ function stopAll() {
 
   document.querySelectorAll(".active").forEach(el => el.classList.remove("active"));
 
+  // Belt-and-suspenders: release every voice on every loaded instrument,
+  // not just the currently active one, so nothing is ever left hanging
+  // after an instrument switch, a panic click, or losing focus.
+  Object.values(instrumentCache).forEach(inst => {
+    try { inst?.releaseAll?.(); } catch {}
+  });
   try { instrument?.releaseAll?.(); } catch {}
 }
 
@@ -261,6 +286,33 @@ function buildPiano() {
 }
 
 document.addEventListener("keydown", (e) => {
+  // Arrow keys: transpose (up/down) and octave (left/right).
+  // Handled before the repeat check so holding an arrow steps continuously.
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    transpose = Math.min(12, transpose + 1);
+    updateLabels();
+    return;
+  }
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    transpose = Math.max(-12, transpose - 1);
+    updateLabels();
+    return;
+  }
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    octave = Math.max(1, octave - 1);
+    updateLabels();
+    return;
+  }
+  if (e.key === "ArrowRight") {
+    e.preventDefault();
+    octave = Math.min(7, octave + 1);
+    updateLabels();
+    return;
+  }
+
   if (e.repeat) return;
 
   if (e.key === " ") {
@@ -289,16 +341,17 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) stopAll();
 });
 
-document.getElementById("startAudio").addEventListener("click", startAudio);
+startAudioBtn.addEventListener("click", startAudio);
 
 document.querySelectorAll(".inst-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
+    if (!instrumentsReady) return;
     if (!started) await startAudio();
 
     document.querySelectorAll(".inst-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
 
-    await setInstrument(btn.dataset.inst);
+    setInstrument(btn.dataset.inst);
   });
 });
 
@@ -338,3 +391,4 @@ document.getElementById("transUp").addEventListener("click", () => {
 document.getElementById("panic").addEventListener("click", stopAll);
 
 buildPiano();
+initInstruments();
