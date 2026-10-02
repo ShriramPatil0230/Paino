@@ -23,6 +23,9 @@ let instrumentsReady = false;
 let currentInstrumentName = "piano";
 let instrument = null;
 let activeKeys = new Map();
+let activeKeyInstruments = new Map();
+let heldVoiceTimers = new Map();
+let heldVoices = new Map();
 let heldKeys = new Set();
 
 const piano = document.getElementById("piano");
@@ -40,7 +43,7 @@ const NOTE_FILE_MAP = {
   "F#": "Gb", "G": "G", "G#": "Ab", "A": "A", "A#": "Bb", "B": "B"
 };
 
-function makeFluidSampler(slug, volume = 3, release = 0.65) {
+function makeFluidSampler(slug, volume = 3, release = 0.65, soundfont = "FluidR3_GM") {
   const urls = {};
   const octaves = [2, 3, 4, 5, 6];
   const notes = ["C", "D#", "F#", "A"];
@@ -55,7 +58,7 @@ function makeFluidSampler(slug, volume = 3, release = 0.65) {
 
   return new Tone.Sampler({
     urls,
-    baseUrl: `${GM_BASE}${slug}-mp3/`,
+    baseUrl: `${GM_BASE.replace("FluidR3_GM", soundfont)}${slug}-mp3/`,
     release,
     volume
   }).connect(compressor);
@@ -73,15 +76,20 @@ const sampledInstruments = {
       C7: "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3", A7: "A7.mp3", C8: "C8.mp3"
     },
     baseUrl: "https://tonejs.github.io/audio/salamander/",
-    release: 0.7,
-    volume: 5
+    // Salamander is a multi-sampled concert piano. A longer release keeps
+    // the recorded tail natural after key-up; the samples still ring while held.
+    release: 2.2,
+    volume: 7
   }).connect(compressor),
 
   harmonium: () => makeFluidSampler("reed_organ", 7, 0.45),
-  organ: () => makeFluidSampler("drawbar_organ", 7, 0.35),
   flute: () => makeFluidSampler("flute", 8, 0.45),
   strings: () => makeFluidSampler("string_ensemble_1", 5, 0.75),
   guitar: () => makeFluidSampler("acoustic_guitar_nylon", 8, 0.35),
+  // MusyngKite has a fuller, more resonant sitar multisample than the basic
+  // FluidR3 patch. It is CC BY-SA 3.0; see the soundfont project README.
+  sitar: () => makeFluidSampler("sitar", 9, 0.8, "MusyngKite"),
+  violin: () => makeFluidSampler("violin", 6, 0.75),
 };
 
 const synthPresets = {
@@ -92,16 +100,16 @@ const synthPresets = {
     volume: 2
   }).connect(compressor),
 
-  pad: () => {
-    const filter = new Tone.Filter(1200, "lowpass").connect(compressor);
-    return new Tone.PolySynth(Tone.Synth, {
-      maxPolyphony: 24,
-      oscillator: { type: "triangle8" },
-      envelope: { attack: 0.65, decay: 0.3, sustain: 0.86, release: 1.4 },
-      volume: 1
-    }).connect(filter);
-  }
 };
+
+// Sample recordings have finite length. This quiet sustain layer keeps a key
+// audible beyond the recording tail while preserving the sampled attack.
+const sustainLayer = new Tone.PolySynth(Tone.Synth, {
+  maxPolyphony: 32,
+  oscillator: { type: "sine" },
+  envelope: { attack: 0.12, decay: 0, sustain: 1, release: 0.18 },
+  volume: -25
+}).connect(compressor);
 
 // --- Preloading: every instrument is built once up front so switching later is instant ---
 const instrumentCache = {};
@@ -152,6 +160,19 @@ function setInstrument(name) {
   instrument = instrumentCache[name];
 }
 
+const INSTRUMENT_SHORTCUTS = {
+  "1": "piano", "2": "harmonium", "3": "flute", "4": "strings",
+  "5": "guitar", "6": "sitar", "7": "synth", "8": "violin"
+};
+
+function selectInstrument(name) {
+  if (!instrumentCache[name]) return;
+  document.querySelectorAll(".inst-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.inst === name);
+  });
+  setInstrument(name);
+}
+
 function midiToNote(midi) {
   const pc = ((midi % 12) + 12) % 12;
   const oct = Math.floor(midi / 12) - 1;
@@ -179,10 +200,18 @@ function playKey(key) {
 
   const note = noteFromOffset(Number(el.dataset.offset));
   activeKeys.set(key, note);
+  activeKeyInstruments.set(key, instrument);
   heldKeys.add(key);
   el.classList.add("active");
 
   instrument.triggerAttack(note, Tone.now(), 1);
+  const timer = setTimeout(() => {
+    heldVoiceTimers.delete(key);
+    if ((!heldKeys.has(key) && !sustain) || !activeKeys.has(key)) return;
+    heldVoices.set(key, note);
+    sustainLayer.triggerAttack(note, Tone.now(), 0.35);
+  }, 1400);
+  heldVoiceTimers.set(key, timer);
 }
 
 function releaseKey(key) {
@@ -191,6 +220,8 @@ function releaseKey(key) {
 
   heldKeys.delete(key);
   if (sustain) return;
+  clearTimeout(heldVoiceTimers.get(key));
+  heldVoiceTimers.delete(key);
 
   const note = activeKeys.get(key);
   activeKeys.delete(key);
@@ -198,7 +229,12 @@ function releaseKey(key) {
   const el = document.querySelector(`[data-key="${cssEscape(key)}"]`);
   if (el) el.classList.remove("active");
 
-  instrument?.triggerRelease(note, Tone.now());
+  activeKeyInstruments.get(key)?.triggerRelease(note, Tone.now());
+  activeKeyInstruments.delete(key);
+  if (heldVoices.has(key)) {
+    sustainLayer.triggerRelease(heldVoices.get(key), Tone.now());
+    heldVoices.delete(key);
+  }
 }
 
 function releaseSustainedKeys() {
@@ -207,7 +243,12 @@ function releaseSustainedKeys() {
       activeKeys.delete(key);
       const el = document.querySelector(`[data-key="${cssEscape(key)}"]`);
       if (el) el.classList.remove("active");
-      instrument?.triggerRelease(note, Tone.now());
+      activeKeyInstruments.get(key)?.triggerRelease(note, Tone.now());
+      activeKeyInstruments.delete(key);
+      if (heldVoices.has(key)) {
+        sustainLayer.triggerRelease(heldVoices.get(key), Tone.now());
+        heldVoices.delete(key);
+      }
     }
   });
 }
@@ -218,6 +259,11 @@ function stopAll() {
   });
 
   activeKeys.clear();
+  activeKeyInstruments.clear();
+  heldVoiceTimers.forEach(timer => clearTimeout(timer));
+  heldVoiceTimers.clear();
+  heldVoices.forEach(note => sustainLayer.triggerRelease(note, Tone.now()));
+  heldVoices.clear();
   heldKeys.clear();
 
   document.querySelectorAll(".active").forEach(el => el.classList.remove("active"));
@@ -287,6 +333,14 @@ function buildPiano() {
 }
 
 document.addEventListener("keydown", (e) => {
+  const shortcutNumber = e.code.startsWith("Digit") ? e.code.slice(5) : e.key;
+  if (e.shiftKey && INSTRUMENT_SHORTCUTS[shortcutNumber]) {
+    e.preventDefault();
+    if (!instrumentsReady) return;
+    if (!started) startAudio().then(() => selectInstrument(INSTRUMENT_SHORTCUTS[shortcutNumber]));
+    else selectInstrument(INSTRUMENT_SHORTCUTS[shortcutNumber]);
+    return;
+  }
   // Arrow keys: transpose (up/down) and octave (left/right).
   // Handled before the repeat check so holding an arrow steps continuously.
   if (e.key === "ArrowUp") {
@@ -349,10 +403,7 @@ document.querySelectorAll(".inst-btn").forEach(btn => {
     if (!instrumentsReady) return;
     if (!started) await startAudio();
 
-    document.querySelectorAll(".inst-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-
-    setInstrument(btn.dataset.inst);
+    selectInstrument(btn.dataset.inst);
   });
 });
 
